@@ -38,17 +38,17 @@ import { anthropicHelper } from "./provider/anthropic"
 import { googleHelper } from "./provider/google"
 import { openaiHelper } from "./provider/openai"
 import { oaCompatHelper } from "./provider/openai-compatible"
-import { createRateLimiter as createIpRateLimiter } from "./ipRateLimiter"
-import { createRateLimiter as createKeyRateLimiter } from "./keyRateLimiter"
-import { createTrialLimiter } from "./trialLimiter"
+// import { createRateLimiter as createIpRateLimiter } from "./ipRateLimiter"
+// import { createRateLimiter as createKeyRateLimiter } from "./keyRateLimiter"
+// import { createTrialLimiter } from "./trialLimiter"
 import { createStickyTracker } from "./stickyProviderTracker"
 import { LiteData } from "@opencode-ai/console-core/lite.js"
 import { Resource } from "@opencode-ai/console-resource"
 import { i18n, type Key } from "~/i18n"
 import { localeFromRequest } from "~/lib/language"
-import { createModelTpmLimiter } from "./modelTpmLimiter"
-import { createModelTpsLimiter } from "./modelTpsLimiter"
-import { createProviderBudgetTracker } from "./providerBudgetTracker"
+// import { createModelTpmLimiter } from "./modelTpmLimiter"
+// import { createModelTpsLimiter } from "./modelTpsLimiter"
+// import { createProviderBudgetTracker } from "./providerBudgetTracker"
 import { accumulateUsage, HOT_WORKSPACES } from "./usageBatcher"
 import { Workspace } from "@opencode-ai/console-core/workspace.js"
 import { countryFromRequest } from "~/lib/request-country"
@@ -121,12 +121,15 @@ export async function handler(
     })
     const zenData = ZenData.list(opts.modelList)
     const modelInfo = validateModel(zenData, model)
-    const trialLimiter = createTrialLimiter(modelInfo.trialProvider, ip)
-    const trialProviders = await trialLimiter?.check()
-    const rateLimiter = modelInfo.allowAnonymous
-      ? createIpRateLimiter(modelInfo.id, modelInfo.rateLimit, ip, input.request)
-      : createKeyRateLimiter(modelInfo.id, modelInfo.rateLimit, zenApiKey, input.request)
-    await rateLimiter?.check()
+    // Rate limiting (IP, key, trial, TPM/TPS, provider budget) is disabled for
+    // QA. Re-enable by restoring the commented block below.
+    const trialProviders = undefined
+    // const trialLimiter = createTrialLimiter(modelInfo.trialProvider, ip)
+    // const trialProviders = await trialLimiter?.check()
+    // const rateLimiter = modelInfo.allowAnonymous
+    //   ? createIpRateLimiter(modelInfo.id, modelInfo.rateLimit, ip, input.request)
+    //   : createKeyRateLimiter(modelInfo.id, modelInfo.rateLimit, zenApiKey, input.request)
+    // await rateLimiter?.check()
     const authInfo = await authenticate(modelInfo, zenApiKey)
     const allowedRegions = authInfo?.region
       ? authInfo.region
@@ -152,14 +155,14 @@ export async function handler(
     const stickyProvider = await stickyTracker?.get()
     const billingSource = validateBilling(authInfo, modelInfo)
     logger.metric({ source: billingSource })
-    const modelTpmLimiter = createModelTpmLimiter(modelInfo.providers)
-    const modelTpmLimits = await modelTpmLimiter?.check()
-    const modelTpsLimiter = createModelTpsLimiter(modelInfo.providers)
-    const modelTpsLimits = await modelTpsLimiter?.check()
-    const providerBudgetTracker = createProviderBudgetTracker(
-      modelInfo.providers.map((provider) => ({ ...zenData.providers[provider.id], ...provider })),
-    )
-    const providerBudget = await providerBudgetTracker?.check()
+    // const modelTpmLimiter = createModelTpmLimiter(modelInfo.providers)
+    // const modelTpmLimits = await modelTpmLimiter?.check()
+    // const modelTpsLimiter = createModelTpsLimiter(modelInfo.providers)
+    // const modelTpsLimits = await modelTpsLimiter?.check()
+    // const providerBudgetTracker = createProviderBudgetTracker(
+    //   modelInfo.providers.map((provider) => ({ ...zenData.providers[provider.id], ...provider })),
+    // )
+    // const providerBudget = await providerBudgetTracker?.check()
 
     const retriableRequest = async (retry: RetryOptions = { excludeProviders: [], retryCount: 0 }) => {
       const providerInfo = selectProvider(
@@ -171,9 +174,9 @@ export async function handler(
         trialProviders,
         retry,
         stickyProvider,
-        modelTpmLimits,
-        modelTpsLimits,
-        providerBudget,
+        undefined,
+        undefined,
+        undefined,
       )
       validateModelSettings(billingSource, authInfo)
       updateProviderKey(authInfo, providerInfo)
@@ -314,14 +317,10 @@ export async function handler(
     // Handle non-streaming response
     if (!isStream || [400, 404, 429, 529].includes(res.status)) {
       const json = await res.json()
-      await rateLimiter?.track()
       const usage = providerInfo.extractUsage(json)
       if (usage) {
         const usageInfo = providerInfo.normalizeUsage(usage)
         const costInfo = calculateCost(modelInfo, usageInfo)
-        await trialLimiter?.track(usageInfo)
-        await modelTpmLimiter?.track(providerInfo.id, providerInfo.model, usageInfo)
-        await providerBudgetTracker?.track(providerInfo.id, providerInfo.budgetPriority, costInfo.totalCostInCent)
         await trackUsage(sessionId, billingSource, authInfo, modelInfo, providerInfo, usageInfo, costInfo)
         await reload(billingSource, authInfo, costInfo)
         json.cost = calculateOccurredCost(billingSource, costInfo)
@@ -368,26 +367,10 @@ export async function handler(
                   response_length: responseLength,
                   "timestamp.last_byte": timestampLastByte,
                 })
-                await rateLimiter?.track()
                 const usage = usageParser.retrieve()
                 if (usage) {
                   const usageInfo = providerInfo.normalizeUsage(usage)
                   const costInfo = calculateCost(modelInfo, usageInfo)
-                  await trialLimiter?.track(usageInfo)
-                  await modelTpmLimiter?.track(providerInfo.id, providerInfo.model, usageInfo)
-                  await modelTpsLimiter?.track(
-                    providerInfo.id,
-                    providerInfo.model,
-                    providerInfo.tpsGoal,
-                    timestampFirstByte,
-                    timestampLastByte,
-                    usageInfo,
-                  )
-                  await providerBudgetTracker?.track(
-                    providerInfo.id,
-                    providerInfo.budgetPriority,
-                    costInfo.totalCostInCent,
-                  )
                   await trackUsage(sessionId, billingSource, authInfo, modelInfo, providerInfo, usageInfo, costInfo)
                   await reload(billingSource, authInfo, costInfo)
                   const cost = calculateOccurredCost(billingSource, costInfo)

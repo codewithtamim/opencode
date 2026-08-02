@@ -18,6 +18,7 @@ Options:
     -v, --version <version> Install a specific version (e.g., 1.0.180)
     -b, --binary <path>     Install from a local binary instead of downloading
     -l, --local             Build from the local repo and install the produced binary
+    -r, --repo <repo>       GitHub repo to download releases from (default: anomalyco/opencode)
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
@@ -25,6 +26,7 @@ Examples:
     curl -fsSL https://opencode.ai/install | bash -s -- --version 1.0.180
     ./install --binary /path/to/opencode
     ./install --local
+    ./install --repo codewithtamim/opencode --version 1.18.12
 EOF
 }
 
@@ -32,6 +34,7 @@ requested_version=${VERSION:-}
 no_modify_path=false
 binary_path=""
 local_build=false
+repo=${OPENCODE_REPO:-"anomalyco/opencode"}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -60,6 +63,15 @@ while [[ $# -gt 0 ]]; do
         -l|--local)
             local_build=true
             shift
+            ;;
+        -r|--repo)
+            if [[ -n "${2:-}" ]]; then
+                repo="$2"
+                shift 2
+            else
+                echo -e "${RED}Error: --repo requires a repo argument (owner/name)${NC}"
+                exit 1
+            fi
             ;;
         --no-modify-path)
             no_modify_path=true
@@ -198,7 +210,7 @@ else
                 build_args="$build_args --baseline"
             fi
 
-            if ! (cd "$pkg_dir" && bun run build $build_args); then
+            if ! (cd "$pkg_dir" && bun run build $build_args >&2); then
                 echo -e "${RED}Error: local build failed${NC}" >&2
                 exit 1
             fi
@@ -230,8 +242,8 @@ else
         fi
 
         if [ -z "$requested_version" ]; then
-            url="https://github.com/anomalyco/opencode/releases/latest/download/$filename"
-            specific_version=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+            url="https://github.com/$repo/releases/latest/download/$filename"
+            specific_version=$(curl -s https://api.github.com/repos/$repo/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
 
             if [[ $? -ne 0 || -z "$specific_version" ]]; then
                 echo -e "${RED}Failed to fetch version information${NC}"
@@ -240,14 +252,14 @@ else
         else
             # Strip leading 'v' if present
             requested_version="${requested_version#v}"
-            url="https://github.com/anomalyco/opencode/releases/download/v${requested_version}/$filename"
+            url="https://github.com/$repo/releases/download/v${requested_version}/$filename"
             specific_version=$requested_version
 
             # Verify the release exists before downloading
-            http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/anomalyco/opencode/releases/tag/v${requested_version}")
+            http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/$repo/releases/tag/v${requested_version}")
             if [ "$http_status" = "404" ]; then
                 echo -e "${RED}Error: Release v${requested_version} not found${NC}"
-                echo -e "${MUTED}Available releases: https://github.com/anomalyco/opencode/releases${NC}"
+                echo -e "${MUTED}Available releases: https://github.com/$repo/releases${NC}"
                 exit 1
             fi
         fi

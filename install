@@ -17,18 +17,21 @@ Options:
     -h, --help              Display this help message
     -v, --version <version> Install a specific version (e.g., 1.0.180)
     -b, --binary <path>     Install from a local binary instead of downloading
+    -l, --local             Build from the local repo and install the produced binary
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
     curl -fsSL https://opencode.ai/install | bash
     curl -fsSL https://opencode.ai/install | bash -s -- --version 1.0.180
     ./install --binary /path/to/opencode
+    ./install --local
 EOF
 }
 
 requested_version=${VERSION:-}
 no_modify_path=false
 binary_path=""
+local_build=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -53,6 +56,10 @@ while [[ $# -gt 0 ]]; do
                 echo -e "${RED}Error: --binary requires a path argument${NC}"
                 exit 1
             fi
+            ;;
+        -l|--local)
+            local_build=true
+            shift
             ;;
         --no-modify-path)
             no_modify_path=true
@@ -167,39 +174,82 @@ else
 
     filename="$APP-$target$archive_ext"
 
+    # Build from the local checkout and install the produced binary
+    if [ "$local_build" = "true" ]; then
+        build_local() {
+            local repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            local pkg_dir="$repo_dir/packages/opencode"
+            if [ ! -d "$pkg_dir" ]; then
+                echo -e "${RED}Error: --local requires the source checkout at $pkg_dir${NC}" >&2
+                exit 1
+            fi
+            if ! command -v bun >/dev/null 2>&1; then
+                echo -e "${RED}Error: 'bun' is required for --local builds${NC}" >&2
+                exit 1
+            fi
 
-    if [ "$os" = "linux" ]; then
-        if ! command -v tar >/dev/null 2>&1; then
-             echo -e "${RED}Error: 'tar' is required but not installed.${NC}"
-             exit 1
+            echo -e "${MUTED}Building from: ${NC}$repo_dir" >&2
+
+            local build_args="--single"
+            if [ "$is_musl" = "true" ]; then
+                # Single-target builds skip musl targets, so build all and pick the musl binary.
+                build_args=""
+            elif [ "$needs_baseline" = "true" ]; then
+                build_args="$build_args --baseline"
+            fi
+
+            if ! (cd "$pkg_dir" && bun run build $build_args); then
+                echo -e "${RED}Error: local build failed${NC}" >&2
+                exit 1
+            fi
+
+            local binary="$pkg_dir/dist/$APP-$target/bin/opencode"
+            if [ ! -f "$binary" ]; then
+                echo -e "${RED}Error: Built binary not found at $binary${NC}" >&2
+                exit 1
+            fi
+            echo "$binary"
+        }
+        specific_version="local"
+        binary_path=$(build_local)
+        if [ ! -f "$binary_path" ]; then
+            echo -e "${RED}Error: Build did not produce a binary${NC}"
+            exit 1
         fi
     else
-        if ! command -v unzip >/dev/null 2>&1; then
-            echo -e "${RED}Error: 'unzip' is required but not installed.${NC}"
-            exit 1
+        if [ "$os" = "linux" ]; then
+            if ! command -v tar >/dev/null 2>&1; then
+                 echo -e "${RED}Error: 'tar' is required but not installed.${NC}"
+                 exit 1
+            fi
+        else
+            if ! command -v unzip >/dev/null 2>&1; then
+                echo -e "${RED}Error: 'unzip' is required but not installed.${NC}"
+                exit 1
+            fi
         fi
-    fi
 
-    if [ -z "$requested_version" ]; then
-        url="https://github.com/anomalyco/opencode/releases/latest/download/$filename"
-        specific_version=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+        if [ -z "$requested_version" ]; then
+            url="https://github.com/anomalyco/opencode/releases/latest/download/$filename"
+            specific_version=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
 
-        if [[ $? -ne 0 || -z "$specific_version" ]]; then
-            echo -e "${RED}Failed to fetch version information${NC}"
-            exit 1
-        fi
-    else
-        # Strip leading 'v' if present
-        requested_version="${requested_version#v}"
-        url="https://github.com/anomalyco/opencode/releases/download/v${requested_version}/$filename"
-        specific_version=$requested_version
+            if [[ $? -ne 0 || -z "$specific_version" ]]; then
+                echo -e "${RED}Failed to fetch version information${NC}"
+                exit 1
+            fi
+        else
+            # Strip leading 'v' if present
+            requested_version="${requested_version#v}"
+            url="https://github.com/anomalyco/opencode/releases/download/v${requested_version}/$filename"
+            specific_version=$requested_version
 
-        # Verify the release exists before downloading
-        http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/anomalyco/opencode/releases/tag/v${requested_version}")
-        if [ "$http_status" = "404" ]; then
-            echo -e "${RED}Error: Release v${requested_version} not found${NC}"
-            echo -e "${MUTED}Available releases: https://github.com/anomalyco/opencode/releases${NC}"
-            exit 1
+            # Verify the release exists before downloading
+            http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/anomalyco/opencode/releases/tag/v${requested_version}")
+            if [ "$http_status" = "404" ]; then
+                echo -e "${RED}Error: Release v${requested_version} not found${NC}"
+                echo -e "${MUTED}Available releases: https://github.com/anomalyco/opencode/releases${NC}"
+                exit 1
+            fi
         fi
     fi
 fi

@@ -139,17 +139,18 @@ export async function handler(
             Workspace.setDefaultRegion({ country: countryFromRequest(input.request) }),
           )
         })()
-    if (
-      authInfo &&
-      opts.modelList === "lite" &&
-      ["deepseek-v4-flash", "deepseek-v4-pro"].includes(modelInfo.id) &&
-      !allowedRegions?.includes("cn")
-    )
-      throw new RegionError(
-        t("zen.api.error.regionNotAllowed", {
-          consoleGoUrl: `https://opencode.ai/workspace/${authInfo.workspaceID}/go`,
-        }),
-      )
+    // temporarily disabled: week of free usage
+    // if (
+    //   authInfo &&
+    //   opts.modelList === "lite" &&
+    //   ["deepseek-v4-flash", "deepseek-v4-pro"].includes(modelInfo.id) &&
+    //   !allowedRegions?.includes("cn")
+    // )
+    //   throw new RegionError(
+    //     t("zen.api.error.regionNotAllowed", {
+    //       consoleGoUrl: `https://opencode.ai/workspace/${authInfo.workspaceID}/go`,
+    //     }),
+    //   )
     const stickyId = sessionId ? sessionId : (authInfo?.workspaceID ?? ip)
     const stickyTracker = createStickyTracker(modelInfo.id, modelInfo.stickyProvider, stickyId)
     const stickyProvider = await stickyTracker?.get()
@@ -819,14 +820,15 @@ export async function handler(
     if (authInfo.isFree) return "free"
     if (modelInfo.allowAnonymous) return "free"
 
-    const formatRetryTime = (seconds: number) => {
-      const days = Math.floor(seconds / 86400)
-      if (days >= 1) return `${days} day${days > 1 ? "s" : ""}`
-      const hours = Math.floor(seconds / 3600)
-      const minutes = Math.ceil((seconds % 3600) / 60)
-      if (hours >= 1) return `${hours}hr ${minutes}min`
-      return `${minutes}min`
-    }
+    // temporarily disabled: week of free usage
+    // const formatRetryTime = (seconds: number) => {
+    //   const days = Math.floor(seconds / 86400)
+    //   if (days >= 1) return `${days} day${days > 1 ? "s" : ""}`
+    //   const hours = Math.floor(seconds / 3600)
+    //   const minutes = Math.ceil((seconds % 3600) / 60)
+    //   if (hours >= 1) return `${hours}hr ${minutes}min`
+    //   return `${minutes}min`
+    // }
 
     // Validate black subscription billing
     if (authInfo.billing.subscription && authInfo.black) {
@@ -842,13 +844,14 @@ export async function handler(
             usage: sub.fixedUsage,
             timeUpdated: sub.timeFixedUpdated,
           })
-          if (result.status === "rate-limited")
-            throw new BlackUsageLimitError(
-              t("zen.api.error.subscriptionQuotaExceeded", {
-                retryIn: formatRetryTime(result.resetInSec),
-              }),
-              result.resetInSec,
-            )
+          // temporarily disabled: week of free usage
+          // if (result.status === "rate-limited")
+          //   throw new BlackUsageLimitError(
+          //     t("zen.api.error.subscriptionQuotaExceeded", {
+          //       retryIn: formatRetryTime(result.resetInSec),
+          //     }),
+          //     result.resetInSec,
+          //   )
         }
 
         // Check rolling limit
@@ -860,13 +863,14 @@ export async function handler(
             usage: sub.rollingUsage,
             timeUpdated: sub.timeRollingUpdated,
           })
-          if (result.status === "rate-limited")
-            throw new BlackUsageLimitError(
-              t("zen.api.error.subscriptionQuotaExceeded", {
-                retryIn: formatRetryTime(result.resetInSec),
-              }),
-              result.resetInSec,
-            )
+          // temporarily disabled: week of free usage
+          // if (result.status === "rate-limited")
+          //   throw new BlackUsageLimitError(
+          //     t("zen.api.error.subscriptionQuotaExceeded", {
+          //       retryIn: formatRetryTime(result.resetInSec),
+          //     }),
+          //     result.resetInSec,
+          //   )
         }
 
         return "subscription"
@@ -889,16 +893,17 @@ export async function handler(
             usage: sub.weeklyUsage,
             timeUpdated: sub.timeWeeklyUpdated,
           })
-          if (result.status === "rate-limited")
-            throw new GoUsageLimitError(
-              t("zen.api.error.goSubscriptionWeeklyLimitExceeded", {
-                retryIn: formatRetryTime(result.resetInSec),
-                consoleGoUrl,
-              }),
-              authInfo.workspaceID,
-              "weekly",
-              result.resetInSec,
-            )
+          // temporarily disabled: week of free usage
+          // if (result.status === "rate-limited")
+          //   throw new GoUsageLimitError(
+          //     t("zen.api.error.goSubscriptionWeeklyLimitExceeded", {
+          //       retryIn: formatRetryTime(result.resetInSec),
+          //       consoleGoUrl,
+          //     }),
+          //     authInfo.workspaceID,
+          //     "weekly",
+          //     result.resetInSec,
+          //   )
         }
 
         // Check monthly limit
@@ -909,16 +914,17 @@ export async function handler(
             timeUpdated: sub.timeMonthlyUpdated,
             timeSubscribed: sub.timeCreated,
           })
-          if (result.status === "rate-limited")
-            throw new GoUsageLimitError(
-              t("zen.api.error.goSubscriptionMonthlyLimitExceeded", {
-                retryIn: formatRetryTime(result.resetInSec),
-                consoleGoUrl,
-              }),
-              authInfo.workspaceID,
-              "monthly",
-              result.resetInSec,
-            )
+          // temporarily disabled: week of free usage
+          // if (result.status === "rate-limited")
+          //   throw new GoUsageLimitError(
+          //     t("zen.api.error.goSubscriptionMonthlyLimitExceeded", {
+          //       retryIn: formatRetryTime(result.resetInSec),
+          //       consoleGoUrl,
+          //     }),
+          //     authInfo.workspaceID,
+          //     "monthly",
+          //     result.resetInSec,
+          //   )
         }
 
         // Check rolling limit
@@ -929,16 +935,17 @@ export async function handler(
             usage: sub.rollingUsage,
             timeUpdated: sub.timeRollingUpdated,
           })
-          if (result.status === "rate-limited")
-            throw new GoUsageLimitError(
-              t("zen.api.error.goSubscriptionRollingLimitExceeded", {
-                retryIn: formatRetryTime(result.resetInSec),
-                consoleGoUrl,
-              }),
-              authInfo.workspaceID,
-              "5 hour",
-              result.resetInSec,
-            )
+          // temporarily disabled: week of free usage
+          // if (result.status === "rate-limited")
+          //   throw new GoUsageLimitError(
+          //     t("zen.api.error.goSubscriptionRollingLimitExceeded", {
+          //       retryIn: formatRetryTime(result.resetInSec),
+          //       consoleGoUrl,
+          //     }),
+          //     authInfo.workspaceID,
+          //     "5 hour",
+          //     result.resetInSec,
+          //   )
         }
 
         return "lite"
@@ -958,35 +965,37 @@ export async function handler(
     const now = new Date()
     const currentYear = now.getUTCFullYear()
     const currentMonth = now.getUTCMonth()
-    if (
-      billing.monthlyLimit &&
-      billing.monthlyUsage &&
-      billing.timeMonthlyUsageUpdated &&
-      billing.monthlyUsage >= centsToMicroCents(billing.monthlyLimit * 100) &&
-      currentYear === billing.timeMonthlyUsageUpdated.getUTCFullYear() &&
-      currentMonth === billing.timeMonthlyUsageUpdated.getUTCMonth()
-    )
-      throw new MonthlyLimitError(
-        t("zen.api.error.workspaceMonthlyLimitReached", {
-          amount: billing.monthlyLimit,
-          billingUrl,
-        }),
-      )
+    // temporarily disabled: week of free usage
+    // if (
+    //   billing.monthlyLimit &&
+    //   billing.monthlyUsage &&
+    //   billing.timeMonthlyUsageUpdated &&
+    //   billing.monthlyUsage >= centsToMicroCents(billing.monthlyLimit * 100) &&
+    //   currentYear === billing.timeMonthlyUsageUpdated.getUTCFullYear() &&
+    //   currentMonth === billing.timeMonthlyUsageUpdated.getUTCMonth()
+    // )
+    //   throw new MonthlyLimitError(
+    //     t("zen.api.error.workspaceMonthlyLimitReached", {
+    //       amount: billing.monthlyLimit,
+    //       billingUrl,
+    //     }),
+    //   )
 
-    if (
-      authInfo.user.monthlyLimit &&
-      authInfo.user.monthlyUsage &&
-      authInfo.user.timeMonthlyUsageUpdated &&
-      authInfo.user.monthlyUsage >= centsToMicroCents(authInfo.user.monthlyLimit * 100) &&
-      currentYear === authInfo.user.timeMonthlyUsageUpdated.getUTCFullYear() &&
-      currentMonth === authInfo.user.timeMonthlyUsageUpdated.getUTCMonth()
-    )
-      throw new UserLimitError(
-        t("zen.api.error.userMonthlyLimitReached", {
-          amount: authInfo.user.monthlyLimit,
-          membersUrl,
-        }),
-      )
+    // temporarily disabled: week of free usage
+    // if (
+    //   authInfo.user.monthlyLimit &&
+    //   authInfo.user.monthlyUsage &&
+    //   authInfo.user.timeMonthlyUsageUpdated &&
+    //   authInfo.user.monthlyUsage >= centsToMicroCents(authInfo.user.monthlyLimit * 100) &&
+    //   currentYear === authInfo.user.timeMonthlyUsageUpdated.getUTCFullYear() &&
+    //   currentMonth === authInfo.user.timeMonthlyUsageUpdated.getUTCMonth()
+    // )
+    //   throw new UserLimitError(
+    //     t("zen.api.error.userMonthlyLimitReached", {
+    //       amount: authInfo.user.monthlyLimit,
+    //       membersUrl,
+    //     }),
+    //   )
 
     return "balance"
   }

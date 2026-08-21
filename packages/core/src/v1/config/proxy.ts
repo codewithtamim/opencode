@@ -2,7 +2,12 @@ export * as ConfigProxyV1 from "./proxy"
 
 import { Schema } from "effect"
 
-export const ProxyType = Schema.Literal("http", "https", "socks4", "socks5").annotate({
+export const ProxyType = Schema.Union([
+  Schema.Literal("http"),
+  Schema.Literal("https"),
+  Schema.Literal("socks4"),
+  Schema.Literal("socks5"),
+]).annotate({
   description: "Type of proxy",
 })
 export type ProxyType = Schema.Schema.Type<typeof ProxyType>

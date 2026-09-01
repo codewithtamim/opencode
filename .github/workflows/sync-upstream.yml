@@ -1,0 +1,259 @@
+name: sync-upstream
+
+on:
+  schedule:
+    - cron: "0 0 * * 1" # Every Monday at midnight UTC
+  workflow_dispatch:
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  check-and-merge:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: write
+    outputs:
+      has_conflicts: ${{ steps.merge.outputs.has_conflicts }}
+      upstream_commits: ${{ steps.check.outputs.commit_count }}
+      upstream_summary: ${{ steps.check.outputs.summary }}
+      merge_branch: ${{ steps.merge.outputs.branch }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "opencode-agent[bot]"
+          git config user.email "opencode-agent[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/anomalyco/opencode.git || true
+          git fetch upstream dev
+
+      - name: Check for upstream changes
+        id: check
+        run: |
+          UPSTREAM_SHA=$(git rev-parse upstream/dev)
+          LOCAL_SHA=$(git rev-parse HEAD)
+
+          if [ "$LOCAL_SHA" = "$UPSTREAM_SHA" ]; then
+            echo "No upstream changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "commit_count=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          COMMIT_COUNT=$(git rev-list --count HEAD..upstream/dev)
+          SUMMARY=$(git log --oneline --no-merges HEAD..upstream/dev | head -20)
+
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+          {
+            echo "summary<<EOF"
+            echo "$SUMMARY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          echo "Found $COMMIT_COUNT upstream commits"
+
+      - name: Attempt merge
+        id: merge
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          BRANCH="sync/upstream-$(date +%Y-%m-%d)"
+          git checkout -b "$BRANCH"
+
+          if git merge upstream/dev --no-edit --no-gpg-sign; then
+            echo "Merge clean — no conflicts"
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+            git push origin "$BRANCH"
+            echo "Pushed branch $BRANCH"
+
+            # Create PR and auto-merge
+            PR_URL=$(gh pr create \
+              --title "chore: sync upstream changes ($(date +%Y-%m-%d))" \
+              --body "## Upstream Sync
+
+          Merged ${COMMIT_COUNT:-0} commits from [anomalyco/opencode](https://github.com/anomalyco/opencode).
+
+          <details>
+          <summary>Recent upstream commits</summary>
+
+          \`\`\`
+          ${{ steps.check.outputs.summary }}
+          \`\`\`
+          </details>
+
+          ---_AUTO_MERGE---" \
+              --base dev \
+              --head "$BRANCH" \
+              --label "chore,auto-merge" 2>&1 || true)
+
+            # Enable auto-merge (squash)
+            PR_NUMBER=$(gh pr view "$PR_URL" --json number -q '.number' 2>/dev/null || echo "")
+            if [ -n "$PR_NUMBER" ]; then
+              gh pr merge "$PR_NUMBER" --squash --auto || true
+              echo "Enabled auto-merge on PR #$PR_NUMBER"
+            fi
+          else
+            echo "Merge conflicts detected"
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+            echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+            # Save conflict info for the AI job
+            git merge --abort 2>/dev/null || true
+
+            CONFLICTS=$(git diff --name-only --diff-filter=U upstream/dev...HEAD 2>/dev/null || \
+              git diff --name-only --diff-filter=U upstream/dev HEAD 2>/dev/null || echo "")
+
+            {
+              echo "files<<EOF"
+              echo "$CONFLICTS"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_COUNT: ${{ steps.check.outputs.commit_count }}
+
+  ai-resolve:
+    needs: check-and-merge
+    if: needs.check-and-merge.outputs.has_conflicts == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install opencode
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Configure git
+        run: |
+          git config user.name "opencode-agent[bot]"
+          git config user.email "opencode-agent[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/anomalyco/opencode.git || true
+          git fetch upstream dev
+
+      - name: Resolve conflicts with AI
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_PERMISSION: '{ "bash": { "*": "deny", "git status*": "allow", "git diff*": "allow", "git log*": "allow", "git add*": "allow" } }'
+        run: |
+          BRANCH="${{ needs.check-and-merge.outputs.merge_branch }}"
+          git checkout -b "$BRANCH"
+
+          # Start the merge but don't commit — let AI resolve
+          git merge upstream/dev --no-commit --no-gpg-sign --no-edit || true
+
+          # Get conflicted files
+          CONFLICTED_FILES=$(git diff --name-only --diff-filter=U)
+
+          if [ -z "$CONFLICTED_FILES" ]; then
+            echo "No conflicted files found after merge"
+            git merge --abort 2>/dev/null || true
+            exit 0
+          fi
+
+          echo "Conflicted files:"
+          echo "$CONFLICTED_FILES"
+
+          # Build file context for AI
+          FILE_CONTEXT=""
+          for FILE in $CONFLICTED_FILES; do
+            if [ -f "$FILE" ]; then
+              FILE_CONTEXT="$FILE_CONTEXT
+
+          === FILE: $FILE ===
+          CONFLICT MARKERS:
+          \`\`\`
+          $(cat "$FILE" | head -200)
+          \`\`\`
+          "
+            fi
+          done
+
+          # Run AI to resolve
+          opencode run -m opencode/mimo-v2.5-free --variant medium "You are a merge conflict resolution assistant. The upstream repository (anomalyco/opencode) has changes that conflict with the local fork (codewithtamim/opencode).
+
+          Your task: Resolve ALL merge conflicts in the following files. For each conflict:
+          1. Read the conflict markers (<<<<<<< HEAD, =======, >>>>>>> upstream/dev)
+          2. Understand both sides of the change
+          3. Choose the appropriate resolution — usually keeping BOTH changes is correct
+          4. Write the resolved file content using the Write tool
+          5. After resolving all conflicts, stage the files with: git add <files>
+
+          IMPORTANT RULES:
+          - NEVER delete code from either side unless it's truly redundant
+          - Prefer combining both changes when they modify different parts
+          - If upstream added new features, keep them
+          - If upstream fixed bugs, keep the fixes
+          - Preserve all existing functionality from the local fork
+          - Do NOT commit — just resolve and stage
+
+          Files with conflicts:
+          $CONFLICTED_FILES
+
+          $FILE_CONTEXT
+
+          Start resolving conflicts now. Read each file, resolve the conflict markers, write the corrected content, and stage the files."
+
+          # Check if all conflicts resolved
+          REMAINING=$(git diff --name-only --diff-filter=U 2>/dev/null)
+          if [ -n "$REMAINING" ]; then
+            echo "WARNING: Some conflicts remain unresolved:"
+            echo "$REMAINING"
+            echo "Creating PR for manual review with partial resolution"
+          fi
+
+          # Commit the resolved merge
+          git add -A
+          git commit -m "chore: sync upstream with AI-resolved conflicts ($(date +%Y-%m-%d))" --no-gpg-sign || true
+
+          # Push and create PR
+          git push origin "$BRANCH"
+
+          PR_URL=$(gh pr create \
+            --title "chore: sync upstream changes — conflict resolution needed ($(date +%Y-%m-%d))" \
+            --body "## Upstream Sync (AI-Resolved Conflicts)
+
+          Merged upstream changes from [anomalyco/opencode](https://github.com/anomalyco/opencode) with AI-assisted conflict resolution.
+
+          <details>
+          <summary>Upstream commits synced</summary>
+
+          \`\`\`
+          ${{ needs.check-and-merge.outputs.upstream_summary }}
+          \`\`\`
+          </details>
+
+          <details>
+          <summary>Conflicted files resolved by AI</summary>
+
+          ${{ needs.check-and-merge.outputs.upstream_commits }} commits merged. AI resolved conflicts in the following files. **Please review carefully before merging.**
+          </details>
+
+          ---REVIEW_REQUIRED---" \
+            --base dev \
+            --head "$BRANCH" \
+            --label "chore,needs-review" 2>&1 || true)
+
+          echo "Created PR: $PR_URL"

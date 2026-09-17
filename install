@@ -34,6 +34,9 @@ requested_version=${VERSION:-}
 no_modify_path=false
 binary_path=""
 local_build=false
+# Version/channel baked into --local builds (override with LOCAL_VERSION / LOCAL_CHANNEL)
+LOCAL_VERSION=${LOCAL_VERSION:-1.18.31}
+LOCAL_CHANNEL=${LOCAL_CHANNEL:-latest}
 repo=${OPENCODE_REPO:-"anomalyco/opencode"}
 
 while [[ $# -gt 0 ]]; do
@@ -210,7 +213,8 @@ else
                 build_args="$build_args --baseline"
             fi
 
-            if ! (cd "$pkg_dir" && bun run build $build_args >&2); then
+            # Pin local builds to a release version/channel instead of 0.0.0-<branch>-<timestamp>
+            if ! (cd "$pkg_dir" && OPENCODE_VERSION="$LOCAL_VERSION" OPENCODE_CHANNEL="$LOCAL_CHANNEL" bun run build $build_args >&2); then
                 echo -e "${RED}Error: local build failed${NC}" >&2
                 exit 1
             fi
@@ -222,7 +226,7 @@ else
             fi
             echo "$binary"
         }
-        specific_version="local"
+        specific_version="$LOCAL_VERSION"
         binary_path=$(build_local)
         if [ ! -f "$binary_path" ]; then
             echo -e "${RED}Error: Build did not produce a binary${NC}"

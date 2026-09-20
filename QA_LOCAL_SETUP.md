@@ -1,6 +1,19 @@
 # Local QA Testing Setup (No Rate Limits)
 
-This guide helps QA test the OpenCode API locally without hitting any rate limits.
+This guide helps QA test the OpenCode API locally without hitting any rate limits. **Rate limits are automatically cleared on every server startup.**
+
+## What's New: Automatic Rate Limit Cleanup
+
+**On server startup, all rate limit keys are automatically cleared.** This means:
+- ✅ No need to manually run `clear-rate-limits.sh`
+- ✅ Each time you restart the dev server, you get a clean slate
+- ✅ Perfect for continuous QA testing without interruptions
+- ✅ Works in development, staging, and QA modes
+
+The cleanup happens automatically when:
+- Running with `NODE_ENV=development`
+- Running with `OPENCODE_QA_MODE=1`
+- Running in staging/development stages
 
 ## Quick Start
 
@@ -102,15 +115,33 @@ These are all returning early - rate limiting is disabled:
 # Check that rate limiters return early
 grep -n "return" packages/console/app/src/routes/zen/util/keyRateLimiter.ts | head -1
 
-# Should show: 10:  return  (early return, disabling the limiter)
+# Should show: 13:  return  (early return, disabling the limiter)
 
-# Test with verbose logging
+# Test with verbose logging (you should see the cleanup message on startup)
 DEBUG=opencode:* bun run dev
+
+# Look for startup message:
+# "✅ QA Mode: Cleared X rate limit keys on startup"
 ```
 
-## Clearing Local Redis Cache (If Needed)
+## Automatic Rate Limit Cleanup (New!)
+
+**You don't need to manually clear rate limits anymore!** The system automatically:
+
+1. **On Server Startup**: Clears all rate limit keys from Redis
+   - Triggered when: `NODE_ENV=development` or `OPENCODE_QA_MODE=1`
+   - Implemented in: `packages/console/app/src/routes/zen/util/cleanup.ts`
+
+2. **Log Messages**: Look for these on startup:
+   ```
+   ✅ QA Mode: Cleared 127 rate limit keys on startup
+   ```
+
+3. **No Manual Intervention Needed**: Just restart the dev server to reset limits
+
+### Manual Clearing (If Needed)
 ```bash
-# Connect to local Redis
+# Only if you need to clear mid-session
 redis-cli
 
 # Clear all rate limit keys
@@ -132,14 +163,16 @@ export LOG_LEVEL=debug                          # Debug logging
 
 ## Testing Checklist for QA Lead
 
-- [ ] Start Redis locally
-- [ ] Set `OPENCODE_DISABLE_AUTOUPDATE=1`
-- [ ] Run console dev server locally
-- [ ] Make 100+ concurrent requests
+- [ ] Start Redis locally (or skip if using test environment)
+- [ ] Set `OPENCODE_DISABLE_AUTOUPDATE=1` (optional)
+- [ ] Run console dev server locally: `bun run dev`
+- [ ] Verify startup message: "✅ QA Mode: Cleared X rate limit keys on startup"
+- [ ] Make 100+ concurrent requests (rate limits won't trigger)
 - [ ] Verify no "rate limit exceeded" errors
 - [ ] Check response times are normal
 - [ ] Test with different API keys
 - [ ] Test with streaming and non-streaming responses
+- [ ] Restart server and verify rate limits are auto-cleared again
 
 ## If Still Hitting Rate Limits
 

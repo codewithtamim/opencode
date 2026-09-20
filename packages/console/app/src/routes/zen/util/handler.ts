@@ -38,6 +38,7 @@ import { systemoneHelper } from "./provider/systemone"
 // import { createRateLimiter as createIpRateLimiter } from "./ipRateLimiter"
 // import { createRateLimiter as createKeyRateLimiter } from "./keyRateLimiter"
 // import { createTrialLimiter } from "./trialLimiter"
+import { clearRateLimitsOnStartup } from "./cleanup"
 import { createStickyTracker } from "./stickyProviderTracker"
 import { LiteData } from "@opencode-ai/console-core/lite.js"
 import { Resource } from "@opencode-ai/console-resource"
@@ -53,6 +54,11 @@ import { isPeakPricing } from "./pricing"
 import { prepareRequestBody } from "./requestBody"
 import { requiresGoTrainingConsent } from "./trainingConsent"
 import { inferenceUnavailable, proxyInference } from "~/lib/inference-proxy"
+
+// Initialize rate limit cleanup on startup
+void clearRateLimitsOnStartup().catch((err) => {
+  logger.warn("Failed to clear rate limits:", err)
+})
 
 type ZenData = Awaited<ReturnType<typeof ZenData.list>>
 type PreparedBody = Awaited<ReturnType<typeof prepareRequestBody>>

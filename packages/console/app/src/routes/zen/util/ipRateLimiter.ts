@@ -9,13 +9,13 @@ export function createRateLimiter(modelId: string, rateLimit: number | undefined
   const dict = i18n(localeFromRequest(request))
 
   const limits = Subscription.getFreeLimits()
-  // temporarily disable check headers
+  // Disabled for QA testing
   //const headersExist = Object.entries(limits.checkHeaders).every(
   //  ([name, value]) => request.headers.get(name)?.toLowerCase().includes(value) ?? false,
   //)
   //const dailyLimit = !headersExist ? limits.dailyRequestsFallback : (rateLimit ?? limits.dailyRequests)
-  const headersExist = true
-  const dailyLimit = !headersExist ? limits.dailyRequestsFallback : (rateLimit ?? limits.dailyRequests)
+  const headersExist = false
+  const dailyLimit = 0
   const isDefaultModel = headersExist && !rateLimit
 
   const ip = !rawIp.length ? "unknown" : rawIp

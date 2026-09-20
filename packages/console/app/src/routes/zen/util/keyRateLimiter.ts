@@ -9,6 +9,8 @@ export function createRateLimiter(
   zenApiKey: string | undefined,
   request: Request,
 ) {
+  // Disabled for QA testing
+  return
   if (!zenApiKey) return
   const dict = i18n(localeFromRequest(request))
 

@@ -4,6 +4,8 @@ import { UsageInfo } from "./provider/provider"
 import { Subscription } from "@opencode-ai/console-core/subscription.js"
 
 export function createTrialLimiter(trialProviders: string[] | undefined, ip: string) {
+  // Disabled for QA testing
+  return
   if (!trialProviders) return
   if (!ip) return
 

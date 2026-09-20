@@ -175,8 +175,11 @@ export async function handler(
     //     }),
     //   )
     const stickyId = sessionId ? sessionId : (authInfo?.workspaceID ?? ip)
-    const stickyTracker = createStickyTracker(modelInfo.id, modelInfo.stickyProvider, stickyId)
-    const stickyProvider = await stickyTracker?.get()
+    // Temporarily disabled for QA testing across providers
+    // const stickyTracker = createStickyTracker(modelInfo.id, modelInfo.stickyProvider, stickyId)
+    // const stickyProvider = await stickyTracker?.get()
+    const stickyTracker = undefined
+    const stickyProvider = undefined
     const billingSource = validateBilling(authInfo, modelInfo)
     logger.metric({ source: billingSource })
     // const modelTpmLimiter = createModelTpmLimiter(modelInfo.providers)
@@ -304,8 +307,9 @@ export async function handler(
 
     const { providerInfo, res, startTimestamp, isStream } = await providerRequest()
 
+    // Temporarily disabled for QA testing
     // Store sticky provider
-    if (res.status === 200) await stickyTracker?.set(providerInfo.id)
+    // if (res.status === 200) await stickyTracker?.set(providerInfo.id)
 
     // Temporarily change 404 to 400 status code b/c solid start automatically override 404 response
     const resStatus = res.status === 404 ? 400 : res.status

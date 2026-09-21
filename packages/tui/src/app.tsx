@@ -7,7 +7,7 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { ExitProvider, useExit } from "./context/exit"
-import { EpilogueProvider } from "./context/epilogue"
+import { EpilogueProvider, useEpilogue } from "./context/epilogue"
 import * as Selection from "./util/selection"
 import { createCliRenderer, MouseButton } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
@@ -86,6 +86,7 @@ import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
+import { factoryReset } from "./util/factory-reset"
 
 registerOpencodeSpinner()
 
@@ -137,6 +138,7 @@ const appBindingCommands = [
   "app.toggle.diffwrap",
   "app.toggle.paste_summary",
   "app.toggle.session_directory_filter",
+  "factory.reset",
 ] as const
 
 export type TuiInput = {
@@ -382,6 +384,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const sync = useSync()
   const project = useProject()
   const exit = useExit()
+  const setEpilogue = useEpilogue()
   const promptRef = usePromptRef()
   const pluginRuntime = usePluginRuntime()
   const attention = createTuiAttention({ renderer, config: tuiConfig, kv })
@@ -592,6 +595,26 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             type: "home",
           })
           dialog.clear()
+        },
+      },
+      {
+        name: "factory.reset",
+        title: "Factory reset (clear database, KV, configs)",
+        category: "System",
+        slashName: "clear-f",
+        slashAliases: ["factory-reset", "wipe", "reset-all"],
+        run: async () => {
+          const confirmed = await DialogConfirm.show(
+            dialog,
+            "Factory reset",
+            "Delete database, KV state, cache and configs (same as uninstall)? Restart required.",
+          )
+          if (confirmed !== true) return
+          route.navigate({ type: "home" })
+          dialog.clear()
+          await factoryReset()
+          setEpilogue("Factory reset complete. Restart opencode to start fresh.")
+          exit()
         },
       },
       {

@@ -5,8 +5,14 @@ export const logger = {
     console.log(`_metric:${JSON.stringify(values)}`)
   },
   log: console.log,
-  debug: (message: string) => {
+  debug: (message?: unknown, ...optionalParams: unknown[]) => {
     if (Resource.App.stage === "production") return
-    console.debug(message)
+    console.debug(message, ...optionalParams)
+  },
+  info: (...args: unknown[]) => {
+    console.info(...args)
+  },
+  warn: (...args: unknown[]) => {
+    console.warn(...args)
   },
 }

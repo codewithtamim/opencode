@@ -21,7 +21,7 @@ export function createRateLimiter(
     .substring(0, 12)
   const interval = `${modelId.substring(0, 27)}-${yyyyMMddHHmm}`
   const redis = getRedis()
-  const key = buildRateLimitKey("key", zenApiKey, interval)
+  const key = buildRateLimitKey("key", zenApiKey ?? "", interval)
 
   return {
     check: async () => {

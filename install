@@ -373,6 +373,7 @@ install_from_binary() {
         MINGW*|MSYS*|CYGWIN*) installed_binary="$APP.exe" ;;
     esac
     cp "$binary_path" "$INSTALL_DIR/$installed_binary"
+    xattr -c "$INSTALL_DIR/$installed_binary" 2>/dev/null || true
     chmod 755 "$INSTALL_DIR/$installed_binary"
 }
 

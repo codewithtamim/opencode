@@ -9,7 +9,7 @@ import { Global } from "@opencode/util/global"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { LogProvider, type LogSink } from "./context/log"
 import { ExitProvider, useExit } from "./context/exit"
-import { EpilogueProvider, useEpilogue } from "./context/epilogue"
+import { EpilogueProvider } from "./context/epilogue"
 import { Selection } from "./util/selection"
 import {
   CliRenderEvents,
@@ -478,7 +478,6 @@ function App() {
   const data = useData()
   const location = useLocation()
   const exit = useExit()
-  const setEpilogue = useEpilogue()
   const promptRef = usePromptRef()
   const plugins = usePlugin()
   const clipboard = useClipboard()

@@ -531,6 +531,9 @@ const make = Effect.gen(function* () {
   })
 
   const inspect = Effect.fnUntraced(function* () {
+    // Force-disable automatic update checks for this build.
+    yield* Effect.logInfo("update check skipped", { reason: "forced-disabled", version: OPENCODE_VERSION, channel: OPENCODE_CHANNEL })
+    return undefined
     if (OPENCODE_LOCAL || ["1", "true"].includes(process.env.OPENCODE_DISABLE_AUTOUPDATE?.toLowerCase() ?? "")) {
       yield* Effect.logInfo("update check skipped", {
         reason: OPENCODE_LOCAL ? "local-install" : "disabled",

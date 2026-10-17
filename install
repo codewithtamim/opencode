@@ -372,7 +372,8 @@ install_from_binary() {
     case "$(uname -s)" in
         MINGW*|MSYS*|CYGWIN*) installed_binary="$APP.exe" ;;
     esac
-    cp "$binary_path" "$INSTALL_DIR/$installed_binary"
+    rm -f "$INSTALL_DIR/$installed_binary"
+    cp -X "$binary_path" "$INSTALL_DIR/$installed_binary" 2>/dev/null || cp "$binary_path" "$INSTALL_DIR/$installed_binary"
     xattr -c "$INSTALL_DIR/$installed_binary" 2>/dev/null || true
     chmod 755 "$INSTALL_DIR/$installed_binary"
 }

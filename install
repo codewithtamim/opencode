@@ -18,18 +18,21 @@ Options:
     -h, --help              Display this help message
     -v, --version <version> Install a specific version (e.g., 0.0.0-beta-17236)
     -b, --binary <path>     Install from a local binary instead of downloading
+    -l, --local             Build from the local repo and install the produced binary
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
     curl -fsSL https://opencode.ai/v2/install | bash
     curl -fsSL https://opencode.ai/v2/install | bash -s -- --version 0.0.0-beta-17236
     ./install --binary /path/to/opencode
+    ./install --local
 EOF
 }
 
 requested_version=${VERSION:-}
 no_modify_path=false
 binary_path=""
+local_build=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -55,6 +58,10 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        -l|--local)
+            local_build=true
+            shift
+            ;;
         --no-modify-path)
             no_modify_path=true
             shift
@@ -68,6 +75,41 @@ done
 
 INSTALL_DIR=$HOME/.opencode/bin
 mkdir -p "$INSTALL_DIR"
+
+# --local: build from the source checkout and install the produced binary
+if [ "$local_build" = "true" ]; then
+    raw_os=$(uname -s)
+    os=$(echo "$raw_os" | tr '[:upper:]' '[:lower:]')
+    case "$raw_os" in
+      Darwin*) os="darwin" ;;
+      Linux*) os="linux" ;;
+      MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+    esac
+    arch=$(uname -m)
+    if [[ "$arch" == "aarch64" ]]; then arch="arm64"; fi
+    if [[ "$arch" == "x86_64" ]]; then arch="x64"; fi
+
+    repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    pkg_dir="$repo_dir/packages/cli"
+    if [ ! -d "$pkg_dir" ]; then
+        echo -e "${RED}Error: --local requires the source checkout at $pkg_dir${NC}" >&2
+        exit 1
+    fi
+    if ! command -v bun >/dev/null 2>&1; then
+        echo -e "${RED}Error: 'bun' is required for --local builds${NC}" >&2
+        exit 1
+    fi
+    echo -e "${MUTED}Building from: ${NC}$repo_dir" >&2
+    if ! (cd "$pkg_dir" && bun run build --single); then
+        echo -e "${RED}Error: local build failed${NC}" >&2
+        exit 1
+    fi
+    binary_path="$pkg_dir/dist/cli-$os-$arch/bin/opencode"
+    if [ ! -f "$binary_path" ]; then
+        echo -e "${RED}Error: Built binary not found at $binary_path${NC}" >&2
+        exit 1
+    fi
+fi
 
 # If --binary is provided, skip all download/detection logic
 if [ -n "$binary_path" ]; then
